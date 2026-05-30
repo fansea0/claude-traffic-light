@@ -7,8 +7,7 @@ macOS 菜单栏悬浮红绿灯，实时显示 Claude Code 工作状态。
 - 绿灯：Claude 空闲/输出完毕
 
 ## 演示
-[6b287b719cf0765930e00e8ae9936b6f.mp4](../Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/wxid_7b4luvvgkrir22_c6ee/temp/RWTemp/2026-05/9e20f478899dc29eb19741386f9343c8/6b287b719cf0765930e00e8ae9936b6f.mp4)
-
+[演示视频.mp4](vd.mp4)
 ## 安装
 
 ### 方式一：DMG 安装
