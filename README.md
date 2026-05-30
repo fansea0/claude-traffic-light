@@ -6,8 +6,8 @@ macOS 菜单栏悬浮红绿灯，实时显示 Claude Code 工作状态。
 - 黄灯闪烁：Claude 等待用户操作（权限确认等）
 - 绿灯：Claude 空闲/输出完毕
 
-## 演示
-[演示视频.mp4](vd.mp4)
+## 效果
+![img_1.png](img_1.png)
 ## 安装
 
 ### 方式一：DMG 安装
