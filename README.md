@@ -6,6 +6,9 @@ macOS 菜单栏悬浮红绿灯，实时显示 Claude Code 工作状态。
 - 黄灯闪烁：Claude 等待用户操作（权限确认等）
 - 绿灯：Claude 空闲/输出完毕
 
+## 演示
+[6b287b719cf0765930e00e8ae9936b6f.mp4](../Library/Containers/com.tencent.xinWeChat/Data/Documents/xwechat_files/wxid_7b4luvvgkrir22_c6ee/temp/RWTemp/2026-05/9e20f478899dc29eb19741386f9343c8/6b287b719cf0765930e00e8ae9936b6f.mp4)
+
 ## 安装
 
 ### 方式一：DMG 安装
@@ -113,6 +116,29 @@ brew install jq
 4. 菜单栏有一个小圆点图标，点击可退出应用
 5. 窗口位置会自动记忆，下次启动恢复
 
+## 关闭与打开
+
+### 关闭应用
+
+菜单栏（屏幕顶部状态栏，Wi-Fi、电池图标同一排）有一个小圆点图标（●），点击后选择「Quit Claude Traffic Light」即可退出。
+
+由于设置了 `LSUIElement = true`，应用不会出现在 Dock 中，只能通过菜单栏操作。
+
+![img.png](img.png)
+
+如果找不到菜单栏图标，也可以命令行强制退出：
+
+```bash
+pkill ClaudeTrafficLight
+```
+
+### 打开应用
+
+- 从 Launchpad 启动
+- 从 `/Applications` 双击打开
+- 命令行：`open /Applications/ClaudeTrafficLight.app`
+- 未安装到 Applications 时：`open ~/ClaudeTrafficLight/ClaudeTrafficLight.app`
+
 ## 开机自启
 
 系统设置 → 通用 → 登录项 → 点击 `+` → 选择 `ClaudeTrafficLight`
@@ -120,12 +146,78 @@ brew install jq
 ## 工作原理
 
 ```
-Claude Code → Hooks → traffic-light-hook.sh → /tmp/claude-traffic-light/state.json → App
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Claude Code 运行时                            │
+│                                                                     │
+│  ┌───────────┐   ┌───────────┐   ┌───────────┐   ┌───────────┐    │
+│  │UserPrompt │   │PreToolUse │   │Permission │   │   Stop    │    │
+│  │  Submit   │   │/PostTool  │   │  Request  │   │           │    │
+│  └─────┬─────┘   └─────┬─────┘   └─────┬─────┘   └─────┬─────┘    │
+│        │               │               │               │           │
+└────────┼───────────────┼───────────────┼───────────────┼───────────┘
+         │               │               │               │
+         ▼               ▼               ▼               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                  traffic-light-hook.sh                               │
+│                                                                     │
+│   读取 stdin JSON → 解析 hook_event_name → 映射状态                   │
+│                                                                     │
+│   UserPromptSubmit ──→ "red"                                        │
+│   PreToolUse/PostToolUse ──→ "red"                                  │
+│   PermissionRequest ──→ "yellow"                                    │
+│   Stop ──→ "green"                                                  │
+│                                                                     │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │
+                                │ 原子写入 (tmp + mv)
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│           /tmp/claude-traffic-light/state.json                       │
+│                                                                     │
+│   {"state":"red","session_id":"...","timestamp":...}                │
+│                                                                     │
+└───────────────────────────────┬─────────────────────────────────────┘
+                                │
+                                │ DispatchSource 文件监听 (<10ms)
+                                ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│              ClaudeTrafficLight.app                                  │
+│                                                                     │
+│   ┌─────────────────────┐    ┌──────────────────────────────┐      │
+│   │ TrafficLightState   │    │    TrafficLightView          │      │
+│   │  Manager            │───▶│                              │      │
+│   │                     │    │    ┌──────┐                  │      │
+│   │ 读取 JSON           │    │    │ ● RED│  ← 亮/暗         │      │
+│   │ 解析 state 字段     │    │    ├──────┤                  │      │
+│   │ 更新 @Published     │    │    │ ● YLW│  ← 亮(闪烁)/暗   │      │
+│   │                     │    │    ├──────┤                  │      │
+│   └─────────────────────┘    │    │ ● GRN│  ← 亮/暗         │      │
+│                              │    └──────┘                  │      │
+│                              └──────────────────────────────┘      │
+│                                                                     │
+│   窗口: NSPanel (置顶 / 无标题栏 / 可拖动 / 跨屏)                    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
-1. Claude Code 在不同生命周期事件触发 hook 脚本
-2. 脚本根据事件类型写入状态（red/yellow/green）到临时文件
-3. App 通过 macOS DispatchSource 监听文件变化，实时更新 UI
+### 状态流转图
+
+```
+         ┌──────────────────────────────────────┐
+         │                                      │
+         ▼          UserPromptSubmit             │
+    ┌─────────┐    PreToolUse/PostToolUse   ┌───┴─────┐
+    │  GREEN  │ ───────────────────────────▶ │   RED   │
+    │  空闲   │                              │  工作中  │
+    └─────────┘                              └────┬────┘
+         ▲                                        │
+         │                                        │ PermissionRequest
+         │ Stop                                   │
+         │                                        ▼
+         │                                   ┌─────────┐
+         └───────────────────────────────────│ YELLOW  │
+                         Stop                │ 等待用户 │
+                                             └─────────┘
+```
 
 ## 状态映射
 
