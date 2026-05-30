@@ -1,0 +1,164 @@
+# Claude Traffic Light
+
+macOS 菜单栏悬浮红绿灯，实时显示 Claude Code 工作状态。
+
+- 红灯：Claude 正在工作
+- 黄灯闪烁：Claude 等待用户操作（权限确认等）
+- 绿灯：Claude 空闲/输出完毕
+
+## 安装
+
+### 方式一：DMG 安装
+
+1. 双击 `ClaudeTrafficLight.dmg`
+2. 将 `ClaudeTrafficLight.app` 拖入 `Applications` 文件夹
+3. 从 Launchpad 或 `/Applications` 启动
+
+### 方式二：源码编译
+
+```bash
+cd ClaudeTrafficLight
+./build.sh
+open ClaudeTrafficLight.app
+```
+
+需要 macOS 13+ 和 Command Line Tools（`xcode-select --install`）。
+
+## 配置 Claude Code Hooks
+
+### 1. 复制 Hook 脚本
+
+```bash
+cp traffic-light-hook.sh ~/.claude/traffic-light-hook.sh
+chmod +x ~/.claude/traffic-light-hook.sh
+```
+
+确保系统已安装 `jq`：
+
+```bash
+brew install jq
+```
+
+### 2. 配置 settings.json
+
+编辑 `~/.claude/settings.json`，在 `hooks` 中添加以下事件：
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/traffic-light-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/traffic-light-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/traffic-light-hook.sh"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/traffic-light-hook.sh"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/traffic-light-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+如果已有其他 hooks 配置，将 traffic-light-hook 追加到对应事件的 `hooks` 数组中即可。
+
+## 使用
+
+1. 启动 App 后屏幕上会出现竖版红绿灯悬浮窗
+2. 可拖动到任意位置（包括第二显示器）
+3. 窗口始终置顶，不会被其他窗口遮挡
+4. 菜单栏有一个小圆点图标，点击可退出应用
+5. 窗口位置会自动记忆，下次启动恢复
+
+## 开机自启
+
+系统设置 → 通用 → 登录项 → 点击 `+` → 选择 `ClaudeTrafficLight`
+
+## 工作原理
+
+```
+Claude Code → Hooks → traffic-light-hook.sh → /tmp/claude-traffic-light/state.json → App
+```
+
+1. Claude Code 在不同生命周期事件触发 hook 脚本
+2. 脚本根据事件类型写入状态（red/yellow/green）到临时文件
+3. App 通过 macOS DispatchSource 监听文件变化，实时更新 UI
+
+## 状态映射
+
+| Hook 事件 | 灯状态 | 含义 |
+|-----------|--------|------|
+| UserPromptSubmit | 红 | 用户提交 prompt，开始工作 |
+| PreToolUse | 红 | 正在执行工具 |
+| PostToolUse | 红 | 工具执行完，继续工作 |
+| PermissionRequest | 黄 | 等待用户授权 |
+| Stop | 绿 | 输出完毕 |
+
+## 多 Session
+
+同时运行多个 Claude Code 时，红绿灯跟踪最新活跃的 session（按时间戳判断）。
+
+## 故障排查
+
+检查状态文件是否正常写入：
+
+```bash
+cat /tmp/claude-traffic-light/state.json
+```
+
+手动测试 hook 脚本：
+
+```bash
+echo '{"hook_event_name":"Stop","session_id":"test"}' | ~/.claude/traffic-light-hook.sh
+cat /tmp/claude-traffic-light/state.json
+```
+
+如果 App 卡在某个状态，手动重置：
+
+```bash
+echo '{"state":"green","session_id":"reset","timestamp":'$(date +%s)',"event":"manual","detail":""}' > /tmp/claude-traffic-light/state.json
+```
+# claude-traffic-light
